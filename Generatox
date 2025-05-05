@@ -3,14 +3,38 @@ import requests
 import re
 import json
 import sys
-from getpass import getpass
-from time import sleep
 import os
-import urllib.parse
+import termios
+from time import sleep
+from sys import stdin
+from termios import tcflush, TCIFLUSH
 
+# Clear screen function
 def clear_screen():
     os.system('clear' if os.name == 'posix' else 'cls')
 
+# Secure password input with echo control
+def get_secure_input(prompt, show_input=True):
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    new = termios.tcgetattr(fd)
+    
+    if not show_input:
+        new[3] = new[3] & ~termios.ECHO  # Hide input
+    else:
+        new[3] = new[3] | termios.ECHO   # Show input
+        
+    try:
+        termios.tcsetattr(fd, termios.TCSADRAIN, new)
+        user_input = input(prompt)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        tcflush(stdin, TCIFLUSH)
+        if not show_input:
+            print()  # Add newline after hidden input
+    return user_input.strip()
+
+# Stylish banner display
 def show_banner():
     clear_screen()
     print("\033[1;36m")
@@ -22,13 +46,13 @@ def show_banner():
     print(" |   |    |       ||   |___ |   |    |   |___ |   |   |   |  |   |___ ")
     print(" |___|    |______| |_______||___|    |_______||___|   |___|  |_______|")
     print("\033[1;35m")
-    print("            Token & Cookie Generator - Improved Version")
+    print("            Token & Cookie Generator - Secure Version")
     print("\033[1;33m")
     print("-------------------------------------------------------------")
     print("\033[0m")
-    sleep(2)
+    sleep(1)
 
-def get_login_params(html):
+def extract_login_params(html):
     params = {
         'lsd': re.search(r'name="lsd" value="(.*?)"', html).group(1),
         'jazoest': re.search(r'name="jazoest" value="(.*?)"', html).group(1),
@@ -46,12 +70,10 @@ def get_fb_token(username, password):
     })
 
     try:
-        # Get initial cookies and login form
-        print("\033[1;33mLoading Facebook login page...\033[0m")
+        print("\033[1;33m[1/4] Loading Facebook login page...\033[0m")
         response = session.get('https://m.facebook.com/')
-        login_params = get_login_params(response.text)
+        login_params = extract_login_params(response.text)
         
-        # Prepare login data
         login_data = {
             'lsd': login_params['lsd'],
             'jazoest': login_params['jazoest'],
@@ -65,35 +87,29 @@ def get_fb_token(username, password):
             'bi_xrwh': '0'
         }
         
-        # Perform login
-        print("\033[1;33mAttempting login...\033[0m")
+        print("\033[1;33m[2/4] Attempting login...\033[0m")
         response = session.post(
             'https://m.facebook.com/login/device-based/regular/login/',
             data=login_data,
             allow_redirects=True
         )
         
-        # Check for successful login
         if 'c_user' in session.cookies:
             user_id = session.cookies.get('c_user')
-            print("\033[1;32mLogin successful! Fetching profile...\033[0m")
+            print("\033[1;33m[3/4] Login successful! Fetching profile...\033[0m")
             
-            # Get profile name
             profile_response = session.get(f'https://m.facebook.com/profile.php?id={user_id}')
             name_match = re.search(r'<title>(.*?)<\/title>', profile_response.text)
             profile_name = name_match.group(1).split('|')[0].strip() if name_match else "Unknown"
             
-            # Get access token
-            print("\033[1;33mFetching access token...\033[0m")
+            print("\033[1;33m[4/4] Fetching access token...\033[0m")
             token_response = session.get(
                 'https://m.facebook.com/dialog/oauth?client_id=124024574287414&redirect_uri=fbconnect://success&scope=email&response_type=token'
             )
             
+            access_token = None
             if 'access_token=' in token_response.url:
                 access_token = token_response.url.split('access_token=')[1].split('&')[0]
-            else:
-                access_token = None
-                print("\033[1;31mCould not extract access token from URL\033[0m")
             
             return {
                 'status': 'success',
@@ -127,7 +143,7 @@ def get_fb_token(username, password):
 def show_result(result):
     clear_screen()
     if result['status'] == 'success':
-        print("\033[1;32mSUCCESS!\033[0m")
+        print("\033[1;32m[ SUCCESS ]\033[0m")
         print(f"\nProfile Name: \033[1;36m{result['profile_name']}\033[0m")
         print(f"User ID: \033[1;36m{result['user_id']}\033[0m")
         
@@ -139,7 +155,7 @@ def show_result(result):
         
         print("\n\033[1;31mIMPORTANT: Keep this information secure!\033[0m")
     else:
-        print("\033[1;31mERROR!\033[0m")
+        print("\033[1;31m[ ERROR ]\033[0m")
         print(f"\n\033[1;31m{result.get('message', 'Unknown error occurred')}\033[0m")
 
 def main():
@@ -150,7 +166,7 @@ def main():
     print("Your credentials are used only for authentication and are not stored.")
     print("\033[1;31mNever share your credentials or tokens with anyone!\033[0m")
     
-    confirm = input("\nContinue? (yes/no): ").strip().lower()
+    confirm = input("\nContinue? (yes/no): ").lower().strip()
     if confirm != 'yes':
         print("Exiting...")
         sys.exit(0)
@@ -158,13 +174,24 @@ def main():
     clear_screen()
     print("\033[1;34mFacebook Login\033[0m")
     username = input("\nEnter Facebook username/email/phone: ").strip()
-    password = getpass("Enter Facebook password: ").strip()
+    
+    # First show password input for verification
+    print("\n\033[1;33mType your password below (visible for verification):\033[0m")
+    password = get_secure_input("Enter Facebook password (visible): ", show_input=True)
+    
+    # Verify password
+    print("\n\033[1;33mPlease retype your password (hidden for security):\033[0m")
+    password_verify = get_secure_input("Verify password: ", show_input=False)
+    
+    if password != password_verify:
+        print("\033[1;31mError: Passwords do not match!\033[0m")
+        sys.exit(1)
     
     result = get_fb_token(username, password)
     show_result(result)
     
     if result['status'] == 'success':
-        save = input("\nSave to file? (yes/no): ").strip().lower()
+        save = input("\nSave to file? (yes/no): ").lower().strip()
         if save == 'yes':
             filename = f"fb_{result['user_id']}_token.txt"
             with open(filename, 'w') as f:
@@ -176,7 +203,11 @@ def main():
                 f.write(result['access_token'])
             print(f"Saved to {filename}")
     
-    print("\n\033[1;35mDone. Exiting...\033[0m")
+    print("\n\033[1;35mProcess completed. Exiting...\033[0m")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\033[1;31mOperation cancelled by user\033[0m")
+        sys.exit(0)
