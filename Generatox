@@ -6,6 +6,7 @@ import sys
 from getpass import getpass
 from time import sleep
 import os
+import urllib.parse
 
 # Clear screen function
 def clear_screen():
@@ -30,6 +31,20 @@ def show_banner():
     print("\033[0m")
     sleep(2)
 
+# Function to extract login form parameters
+def extract_login_params(html_content):
+    lsd_match = re.search(r'name="lsd" value="(.*?)"', html_content)
+    jazoest_match = re.search(r'name="jazoest" value="(.*?)"', html_content)
+    m_ts_match = re.search(r'name="m_ts" value="(.*?)"', html_content)
+    li_match = re.search(r'name="li" value="(.*?)"', html_content)
+    
+    return {
+        'lsd': lsd_match.group(1) if lsd_match else '',
+        'jazoest': jazoest_match.group(1) if jazoest_match else '',
+        'm_ts': m_ts_match.group(1) if m_ts_match else '',
+        'li': li_match.group(1) if li_match else ''
+    }
+
 # Main function to get FB token
 def get_fb_token(username, password):
     session = requests.Session()
@@ -38,25 +53,43 @@ def get_fb_token(username, password):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
         'Accept-Language': 'en-US,en;q=0.9',
-        'Connection': 'keep-alive'
+        'Connection': 'keep-alive',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Upgrade-Insecure-Requests': '1'
     }
     
     try:
-        # Get initial cookies
+        # Get initial cookies and login form
         response = session.get('https://m.facebook.com/', headers=headers)
+        login_params = extract_login_params(response.text)
         
-        # Prepare login data
+        # Prepare login data with additional required parameters
         login_data = {
+            'lsd': login_params['lsd'],
+            'jazoest': login_params['jazoest'],
+            'm_ts': login_params['m_ts'],
+            'li': login_params['li'],
+            'try_number': '0',
+            'unrecognized_tries': '0',
             'email': username,
             'pass': password,
-            'login': 'Log In'
+            'login': 'Log In',
+            'bi_xrwh': '0'
         }
         
-        # Login URL
+        # Login URL with proper referer
         login_url = 'https://m.facebook.com/login/device-based/regular/login/?refsrc=deprecated&lwv=100'
+        headers['Referer'] = 'https://m.facebook.com/'
+        headers['Origin'] = 'https://m.facebook.com'
+        headers['Content-Type'] = 'application/x-www-form-urlencoded'
         
-        # Perform login
-        response = session.post(login_url, data=login_data, headers=headers, allow_redirects=True)
+        # Perform login with proper encoding
+        response = session.post(
+            login_url,
+            data=urllib.parse.urlencode(login_data),
+            headers=headers,
+            allow_redirects=True
+        )
         
         # Check login success
         if 'c_user' in session.cookies:
@@ -67,17 +100,19 @@ def get_fb_token(username, password):
             name_match = re.search(r'<title>(.*?)<\/title>', profile_response.text)
             profile_name = name_match.group(1).split('|')[0].strip() if name_match else "Unknown"
             
-            # Get token
-            home_page = session.get('https://m.facebook.com/home.php', headers=headers).text
-            token_match = re.search(r'\"accessToken\":\"(.*?)\"', home_page)
-            
-            if token_match:
-                access_token = token_match.group(1)
-            else:
-                # Alternative token method
-                response = session.get('https://business.facebook.com/business_locations', headers=headers)
-                token_match = re.search(r'\"accessToken\":\"(.*?)\"', response.text)
-                access_token = token_match.group(1) if token_match else None
+            # Get token from Graph API
+            try:
+                response = session.get('https://m.facebook.com/dialog/oauth?client_id=124024574287414&redirect_uri=fbconnect://success&scope=email,user_birthday,user_photos,user_friends&response_type=token', headers=headers)
+                token_match = re.search(r'access_token=([^&]+)', response.url)
+                if token_match:
+                    access_token = token_match.group(1)
+                else:
+                    # Alternative token method
+                    home_page = session.get('https://m.facebook.com/home.php', headers=headers).text
+                    token_match = re.search(r'\"accessToken\":\"(.*?)\"', home_page)
+                    access_token = token_match.group(1) if token_match else None
+            except:
+                access_token = None
             
             return {
                 'status': 'success',
@@ -92,9 +127,14 @@ def get_fb_token(username, password):
                 'message': 'Facebook requires account verification. Please check your account.'
             }
         else:
+            # Try to find error message
+            error_msg = "Login failed. Check your credentials."
+            error_match = re.search(r'<div[^>]*class="[^"]*error[^"]*"[^>]*>([^<]+)', response.text)
+            if error_match:
+                error_msg = error_match.group(1).strip()
             return {
                 'status': 'failed',
-                'message': 'Login failed. Check your credentials.'
+                'message': error_msg
             }
     
     except Exception as e:
