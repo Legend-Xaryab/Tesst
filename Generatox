@@ -8,11 +8,9 @@ from time import sleep
 import os
 import urllib.parse
 
-# Clear screen function
 def clear_screen():
     os.system('clear' if os.name == 'posix' else 'cls')
 
-# Stylish banner display
 def show_banner():
     clear_screen()
     print("\033[1;36m")
@@ -24,46 +22,36 @@ def show_banner():
     print(" |   |    |       ||   |___ |   |    |   |___ |   |   |   |  |   |___ ")
     print(" |___|    |______| |_______||___|    |_______||___|   |___|  |_______|")
     print("\033[1;35m")
-    print("            Token & Cookie Generator - Termux Version")
-    print("                 Created by Zaryab")
+    print("            Token & Cookie Generator - Improved Version")
     print("\033[1;33m")
     print("-------------------------------------------------------------")
     print("\033[0m")
     sleep(2)
 
-# Function to extract login form parameters
-def extract_login_params(html_content):
-    lsd_match = re.search(r'name="lsd" value="(.*?)"', html_content)
-    jazoest_match = re.search(r'name="jazoest" value="(.*?)"', html_content)
-    m_ts_match = re.search(r'name="m_ts" value="(.*?)"', html_content)
-    li_match = re.search(r'name="li" value="(.*?)"', html_content)
-    
-    return {
-        'lsd': lsd_match.group(1) if lsd_match else '',
-        'jazoest': jazoest_match.group(1) if jazoest_match else '',
-        'm_ts': m_ts_match.group(1) if m_ts_match else '',
-        'li': li_match.group(1) if li_match else ''
+def get_login_params(html):
+    params = {
+        'lsd': re.search(r'name="lsd" value="(.*?)"', html).group(1),
+        'jazoest': re.search(r'name="jazoest" value="(.*?)"', html).group(1),
+        'm_ts': re.search(r'name="m_ts" value="(.*?)"', html).group(1),
+        'li': re.search(r'name="li" value="(.*?)"', html).group(1)
     }
+    return params
 
-# Main function to get FB token
 def get_fb_token(username, password):
     session = requests.Session()
-    
-    # Set mobile browser headers
-    headers = {
+    session.headers.update({
         'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
         'Accept-Language': 'en-US,en;q=0.9',
-        'Connection': 'keep-alive',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Upgrade-Insecure-Requests': '1'
-    }
-    
+        'Connection': 'keep-alive'
+    })
+
     try:
         # Get initial cookies and login form
-        response = session.get('https://m.facebook.com/', headers=headers)
-        login_params = extract_login_params(response.text)
+        print("\033[1;33mLoading Facebook login page...\033[0m")
+        response = session.get('https://m.facebook.com/')
+        login_params = get_login_params(response.text)
         
-        # Prepare login data with additional required parameters
+        # Prepare login data
         login_data = {
             'lsd': login_params['lsd'],
             'jazoest': login_params['jazoest'],
@@ -77,42 +65,35 @@ def get_fb_token(username, password):
             'bi_xrwh': '0'
         }
         
-        # Login URL with proper referer
-        login_url = 'https://m.facebook.com/login/device-based/regular/login/?refsrc=deprecated&lwv=100'
-        headers['Referer'] = 'https://m.facebook.com/'
-        headers['Origin'] = 'https://m.facebook.com'
-        headers['Content-Type'] = 'application/x-www-form-urlencoded'
-        
-        # Perform login with proper encoding
+        # Perform login
+        print("\033[1;33mAttempting login...\033[0m")
         response = session.post(
-            login_url,
-            data=urllib.parse.urlencode(login_data),
-            headers=headers,
+            'https://m.facebook.com/login/device-based/regular/login/',
+            data=login_data,
             allow_redirects=True
         )
         
-        # Check login success
+        # Check for successful login
         if 'c_user' in session.cookies:
             user_id = session.cookies.get('c_user')
+            print("\033[1;32mLogin successful! Fetching profile...\033[0m")
             
             # Get profile name
-            profile_response = session.get(f'https://m.facebook.com/profile.php?id={user_id}', headers=headers)
+            profile_response = session.get(f'https://m.facebook.com/profile.php?id={user_id}')
             name_match = re.search(r'<title>(.*?)<\/title>', profile_response.text)
             profile_name = name_match.group(1).split('|')[0].strip() if name_match else "Unknown"
             
-            # Get token from Graph API
-            try:
-                response = session.get('https://m.facebook.com/dialog/oauth?client_id=124024574287414&redirect_uri=fbconnect://success&scope=email,user_birthday,user_photos,user_friends&response_type=token', headers=headers)
-                token_match = re.search(r'access_token=([^&]+)', response.url)
-                if token_match:
-                    access_token = token_match.group(1)
-                else:
-                    # Alternative token method
-                    home_page = session.get('https://m.facebook.com/home.php', headers=headers).text
-                    token_match = re.search(r'\"accessToken\":\"(.*?)\"', home_page)
-                    access_token = token_match.group(1) if token_match else None
-            except:
+            # Get access token
+            print("\033[1;33mFetching access token...\033[0m")
+            token_response = session.get(
+                'https://m.facebook.com/dialog/oauth?client_id=124024574287414&redirect_uri=fbconnect://success&scope=email&response_type=token'
+            )
+            
+            if 'access_token=' in token_response.url:
+                access_token = token_response.url.split('access_token=')[1].split('&')[0]
+            else:
                 access_token = None
+                print("\033[1;31mCould not extract access token from URL\033[0m")
             
             return {
                 'status': 'success',
@@ -124,110 +105,78 @@ def get_fb_token(username, password):
         elif 'checkpoint' in response.url:
             return {
                 'status': 'checkpoint',
-                'message': 'Facebook requires account verification. Please check your account.'
+                'message': 'Account verification required. Please check your account.'
             }
         else:
-            # Try to find error message
-            error_msg = "Login failed. Check your credentials."
-            error_match = re.search(r'<div[^>]*class="[^"]*error[^"]*"[^>]*>([^<]+)', response.text)
-            if error_match:
-                error_msg = error_match.group(1).strip()
+            error_msg = "Login failed. Please check your credentials."
+            if "The password you entered is incorrect" in response.text:
+                error_msg = "Incorrect password. Please try again."
+            elif "Your account has been locked" in response.text:
+                error_msg = "Account locked. Please secure your account."
             return {
                 'status': 'failed',
                 'message': error_msg
             }
-    
+            
     except Exception as e:
         return {
             'status': 'error',
             'message': f'An error occurred: {str(e)}'
         }
 
-# Display result in a stylish way
 def show_result(result):
     clear_screen()
     if result['status'] == 'success':
-        print("\033[1;32m")
-        print("  _____                             _ ")
-        print(" / ____|                           | |")
-        print("| (___  _   _  ___ ___ ___  ___ ___| |")
-        print(" \___ \| | | |/ __/ __/ _ \/ __/ __| |")
-        print(" ____) | |_| | (_| (_|  __/\__ \__ \_|")
-        print("|_____/ \__,_|\___\___\___||___/___(_)")
-        print("\033[1;36m")
-        print(f"\nWelcome, {result['profile_name']}!")
-        print(f"User ID: {result['user_id']}")
+        print("\033[1;32mSUCCESS!\033[0m")
+        print(f"\nProfile Name: \033[1;36m{result['profile_name']}\033[0m")
+        print(f"User ID: \033[1;36m{result['user_id']}\033[0m")
         
-        print("\n\033[1;35m=== Facebook Cookies ===\033[0m")
+        print("\n\033[1;35m=== Cookies ===\033[0m")
         print(json.dumps(result['cookies'], indent=2))
         
         print("\n\033[1;35m=== Access Token ===\033[0m")
         print(result['access_token'])
         
         print("\n\033[1;31mIMPORTANT: Keep this information secure!\033[0m")
-        print("\033[1;33mDon't share with anyone as it provides access to your account.\033[0m")
     else:
-        print("\033[1;31m")
-        print("  _____   _                                  ___ ")
-        print(" |  ___| (_)                                / _ \\")
-        print(" | |_     _   _ __    _ __    ___  _ __   | | | |")
-        print(" |  _|   | | | '_ \  | '_ \  / _ \| '_ \  | | | |")
-        print(" | |     | | | | | | | | | ||  __/| | | | | |_| |")
-        print(" |_|     |_| |_| |_| |_| |_| \___||_| |_|  \___/")
-        print("\033[0m")
-        print(f"\nError: {result.get('message', 'Unknown error')}")
+        print("\033[1;31mERROR!\033[0m")
+        print(f"\n\033[1;31m{result.get('message', 'Unknown error occurred')}\033[0m")
 
-# Main function
 def main():
     show_banner()
     
-    print("\033[1;33m")
-    print("DISCLAIMER:")
-    print("This tool will help generate Facebook access tokens.")
+    print("\033[1;33mDISCLAIMER:\033[0m")
+    print("This tool generates Facebook access tokens for development purposes.")
     print("Your credentials are used only for authentication and are not stored.")
-    print("Use at your own risk. The developer is not responsible for any account issues.")
-    print("\033[1;31m")
-    print("NEVER share your credentials or generated tokens with untrusted parties!")
-    print("\033[0m")
+    print("\033[1;31mNever share your credentials or tokens with anyone!\033[0m")
     
-    confirm = input("\nDo you understand and wish to proceed? (yes/no): ").strip().lower()
+    confirm = input("\nContinue? (yes/no): ").strip().lower()
     if confirm != 'yes':
         print("Exiting...")
         sys.exit(0)
     
     clear_screen()
-    print("\033[1;34m")
-    print("  ___ _____ _   _ _____ _   _ _____ ___  ___  ___ _____ ")
-    print(" / _ \_   _| | | |  ___| \ | |  __ \|  \/  | / _ \_   _|")
-    print("/ /_\ \| | | | | | |__ |  \| | |  \/| .  . |/ /_\ \| |  ")
-    print("|  _  || | | | | |  __|| . ` | | __ | |\/| ||  _  || |  ")
-    print("| | | || | \ \_/ / |___| |\  | |_\ \| |  | || | | || |  ")
-    print("\_| |_/\_/  \___/\____/\_| \_/\____/\_|  |_/\_| |_/\_/  ")
-    print("\033[0m")
-    
-    print("\nPlease enter your Facebook login details:")
+    print("\033[1;34mFacebook Login\033[0m")
     username = input("\nEnter Facebook username/email/phone: ").strip()
     password = getpass("Enter Facebook password: ").strip()
     
-    print("\n\033[1;36mGenerating token and cookies... Please wait...\033[0m")
     result = get_fb_token(username, password)
-    
     show_result(result)
     
     if result['status'] == 'success':
-        save = input("\nDo you want to save these details to a file? (yes/no): ").strip().lower()
+        save = input("\nSave to file? (yes/no): ").strip().lower()
         if save == 'yes':
             filename = f"fb_{result['user_id']}_token.txt"
             with open(filename, 'w') as f:
-                f.write(f"Profile Name: {result['profile_name']}\n")
+                f.write(f"Profile: {result['profile_name']}\n")
                 f.write(f"User ID: {result['user_id']}\n\n")
                 f.write("Cookies:\n")
                 f.write(json.dumps(result['cookies'], indent=2))
-                f.write("\n\nAccess Token:\n")
+                f.write("\n\nToken:\n")
                 f.write(result['access_token'])
-            print(f"\nDetails saved to {filename}")
+            print(f"Saved to {filename}")
     
-    print("\n\033[1;35mProcess completed. Exiting...\033[0m")
+    print("\n\033[1;35mDone. Exiting...\033[0m")
 
 if __name__ == "__main__":
     main()
