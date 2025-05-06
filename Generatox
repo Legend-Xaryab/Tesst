@@ -27,11 +27,12 @@ def banner():
  ⠀⠀⠀⠀⠀⠀⠀⢐⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀
  ⠀⠀⠀⠀⠀⠀⠀⠈⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀
  ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠻⢿⣿⣿⣿⣿⠟⠁
-[ Blindex Tookens Generator Tools ]
-[ Developed By Zaryab x3 Blinderx ]
+
+[ Bliīdex Tookens Gēnerator Tōōls ]
+[ Devēloped By Zāryāb x3 Blindērx ]
     """ + Style.RESET_ALL)
     print(Fore.YELLOW + "Thē Onfirē Blindēr Rullēx" + Style.RESET_ALL)
-    print(Fore.RED + "- Hey Bois !" + Style.RESET_ALL)
+    print(Fore.RED + "- Hey Bois Remēmber Mēh?" + Style.RESET_ALL)
     print("\n")
 
 # Main function
@@ -55,7 +56,7 @@ def main():
             return
             
         # Simulate token generation
-        print(Fore.GREEN + "[✓] Login successful!" + Style.RESET_ALL)
+        print(Fore.GREEN + "==> Login successful!" + Style.RESET_ALL)
         time.sleep(1)
         
         # Generate fake token and cookies for demonstration
