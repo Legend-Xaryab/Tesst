@@ -38,7 +38,7 @@ def banner():
 def main():
     banner()
     
-    print(Fore.GREEN + "[+] Please enter Facebook credentials (for demonstration only)" + Style.RESET_ALL)
+    print(Fore.GREEN + "==> Please Enter Facebook Credentials" + Style.RESET_ALL)
     
     # Get credentials
     try:
